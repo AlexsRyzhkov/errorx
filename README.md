@@ -30,7 +30,7 @@
 ## Установка
 
 ```bash
-go get github.com/yourname/errorx
+go get github.com/AlexsRyzhkov/errorx
 ```
 
 ---
