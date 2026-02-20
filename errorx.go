@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+
+	"go.uber.org/zap/zapcore"
 )
 
 type errorStruct struct {
@@ -26,15 +28,60 @@ func (e *errorStruct) Unwrap() error {
 }
 
 func (e *errorStruct) MarshalJSON() ([]byte, error) {
-	type node struct {
-		Namespace string         `json:"namespace,omitempty"`
-		Code      string         `json:"code,omitempty"`
-		Message   string         `json:"message,omitempty"`
-		Fields    map[string]any `json:"fields,omitempty"`
-		Caller    string         `json:"caller,omitempty"`
-		Type      string         `json:"type,omitempty"`
+
+	return json.Marshal(e.getChain())
+}
+
+func (e *errorStruct) MarshalLogArray(arr zapcore.ArrayEncoder) error {
+	for _, err := range e.getChain() {
+		_ = arr.AppendObject(err)
+	}
+	return nil
+}
+
+type node struct {
+	Namespace string         `json:"namespace,omitempty"`
+	Code      string         `json:"code,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	Fields    map[string]any `json:"fields,omitempty"`
+	Caller    string         `json:"caller,omitempty"`
+	Type      string         `json:"type,omitempty"`
+}
+
+func (n node) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	if n.Namespace != "" {
+		enc.AddString("namespace", n.Namespace)
 	}
 
+	if n.Code != "" {
+		enc.AddString("code", n.Code)
+	}
+
+	if n.Message != "" {
+		enc.AddString("message", n.Message)
+	}
+
+	if n.Caller != "" {
+		enc.AddString("caller", n.Caller)
+	}
+
+	if n.Type != "" {
+		enc.AddString("type", n.Type)
+	}
+
+	if len(n.Fields) > 0 {
+		enc.AddObject("fields", zapcore.ObjectMarshalerFunc(func(obj zapcore.ObjectEncoder) error {
+			for k, v := range n.Fields {
+				obj.AddReflected(k, v)
+			}
+			return nil
+		}))
+	}
+
+	return nil
+}
+
+func (e *errorStruct) getChain() []node {
 	var chain []node
 	var err error = e
 
@@ -60,7 +107,7 @@ func (e *errorStruct) MarshalJSON() ([]byte, error) {
 		err = errors.Unwrap(err)
 	}
 
-	return json.Marshal(chain)
+	return chain
 }
 
 type Errorx interface {
